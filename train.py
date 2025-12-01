@@ -27,11 +27,11 @@ from env import make_env
 if __name__ == '__main__':
     multiprocessing.set_start_method('spawn', force=True)
     
-    config = get_config('./config/env/darkroom.yaml')
-    config.update(get_config('./config/algorithm/ppo_darkroom.yaml'))
+    config = get_config('./config/env/metaworld.yaml')
+    config.update(get_config('./config/algorithm/ppo_metaworld.yaml'))
     config.update(get_config('./config/model/ad_dr.yaml'))
 
-    log_dir = path.join('./runs', f"{config['model']}-{config['env']}-seed{config['env_split_seed']}")
+    log_dir = path.join('./runs', f"{config['model']}-{config['env']}-{config['task']}")
     
     writer = SummaryWriter(log_dir, flush_secs=15)
 
@@ -64,8 +64,8 @@ if __name__ == '__main__':
 
     # Use compressed dataset for CompressedAD model
     if model_name == 'CompressedAD':
-        train_dataset = ADCompressedDataset(config, config['traj_dir'], 'train', config['train_n_stream'], config['train_source_timesteps'])
-        test_dataset = ADCompressedDataset(config, config['traj_dir'], 'test', 1, config['train_source_timesteps'])
+        train_dataset = ADCompressedDataset(config, config['traj_dir'], 'train', n_seed=50, n_stream=config['train_n_stream'], source_timesteps=config['train_source_timesteps'])
+        test_dataset = ADCompressedDataset(config, config['traj_dir'], 'test', n_seed=10, n_stream=1, source_timesteps=config['train_source_timesteps'])
         
         # Use custom collate function for compressed dataset
         from torch.utils.data import DataLoader
@@ -89,8 +89,8 @@ if __name__ == '__main__':
         )
     else:
         # Standard AD dataset
-        train_dataset = ADDataset(config, config['traj_dir'], 'train', config['train_n_stream'], config['train_source_timesteps'])
-        test_dataset = ADDataset(config, config['traj_dir'], 'test', 1, config['train_source_timesteps'])
+        train_dataset = ADDataset(config, config['traj_dir'], 'train', n_seed=50, n_stream=config['train_n_stream'], source_timesteps=config['train_source_timesteps'])
+        test_dataset = ADDataset(config, config['traj_dir'], 'test', n_seed=10, n_stream=1, source_timesteps=config['train_source_timesteps'])
 
         train_dataloader = get_data_loader(train_dataset, batch_size=config['train_batch_size'], config=config, shuffle=True)
         train_dataloader = next_dataloader(train_dataloader)
@@ -117,15 +117,27 @@ if __name__ == '__main__':
         print(f'Checkpoint loaded from {ckpt_path}')
 
     env_name = config['env']
-    train_env_args, test_env_args = SAMPLE_ENVIRONMENT[env_name](config)
-    train_env_args = train_env_args[:10]
-    test_env_args = test_env_args[:10]
-    env_args = train_env_args + test_env_args    
-
-    if env_name == "darkroom":
-        envs = SubprocVecEnv([make_env(config, goal=arg) for arg in env_args])
+    
+    if env_name == 'metaworld':
+        import metaworld
+        from gymnasium.wrappers import TimeLimit
+        
+        ml1 = metaworld.ML1(env_name=config['task'], seed=config['mw_seed'])
+        
+        # Use subset of train and test tasks for evaluation
+        train_task_instances = list(ml1.train_tasks)[:10]
+        test_task_instances = list(ml1.test_tasks)[:10]
+        all_task_instances = train_task_instances + test_task_instances
+        
+        env_cls = list(ml1.train_classes.values())[0]
+        envs = SubprocVecEnv([make_env(config, env_cls, task) for task in all_task_instances])
     else:
-        raise NotImplementedError('Environment not supported')
+        # Darkroom environment
+        train_env_args, test_env_args = SAMPLE_ENVIRONMENT[env_name](config)
+        train_env_args = train_env_args[:10]
+        test_env_args = test_env_args[:10]
+        env_args = train_env_args + test_env_args
+        envs = SubprocVecEnv([make_env(config, goal=arg) for arg in env_args])
     
     model, optimizer, train_dataloader, lr_sched = accelerator.prepare(model, optimizer, train_dataloader, lr_sched)
 

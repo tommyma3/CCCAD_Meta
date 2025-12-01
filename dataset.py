@@ -8,44 +8,57 @@ import torch
 
 
 class ADDataset(Dataset):
-    def __init__(self, config, traj_dir, mode='train', n_stream=None, source_timesteps=None):
+    def __init__(self, config, traj_dir, mode='train', n_seed=50, n_stream=None, source_timesteps=None):
         self.config = config
         self.env = config['env']
         self.n_transit = config['n_transit']
         self.dynamics = config['dynamics']
         
-        if self.env == 'darkroom':
-            n_total_envs = config['grid_size'] ** 2
-
-        else:
-            raise ValueError('Invalid env')
-
-        total_env_idx = list(range(n_total_envs))
-        random.seed(config['env_split_seed'])
-        random.shuffle(total_env_idx)
-        
-        n_train_envs = round(n_total_envs * config['train_env_ratio'])
-        
-        if mode == 'train':
-            env_idx = total_env_idx[:n_train_envs]
-        elif mode == 'test':
-            env_idx = total_env_idx[n_train_envs:]
-        elif mode == 'all':
-            env_idx = total_env_idx
-        else:
-            raise ValueError('Invalid mode')
-
         states = []
         actions = []
         rewards = []
         next_states = []
 
-        with h5py.File(f'{traj_dir}/{get_traj_file_name(config)}.hdf5', 'r') as f:
-            for i in env_idx:
-                states.append(f[f'{i}']['states'][()].transpose(1, 0, 2)[:n_stream, :source_timesteps])
-                actions.append(f[f'{i}']['actions'][()].transpose(1, 0)[:n_stream, :source_timesteps])
-                rewards.append(f[f'{i}']['rewards'][()].transpose(1, 0)[:n_stream, :source_timesteps])
-                next_states.append(f[f'{i}']['next_states'][()].transpose(1, 0, 2)[:n_stream, :source_timesteps])
+        if self.env == 'metaworld':
+            # Metaworld uses task-based directory structure
+            if mode == 'train':
+                file_path = f'{traj_dir}/{config["task"]}/{get_traj_file_name(config)}.hdf5'
+            elif mode == 'test':
+                file_path = f'{traj_dir}/{config["task"]}/test/{get_traj_file_name(config)}.hdf5'
+            else:
+                raise ValueError('Invalid mode')
+            
+            with h5py.File(file_path, 'r') as f:
+                for i in range(n_seed):
+                    # Extract only observation dimensions (first dim_obs elements)
+                    states.append(f[f'{i}']['states'][()].transpose(1, 0, 2)[:n_stream, :source_timesteps, :config['dim_obs']])
+                    actions.append(f[f'{i}']['actions'][()].transpose(1, 0, 2)[:n_stream, :source_timesteps])
+                    rewards.append(f[f'{i}']['rewards'][()].transpose(1, 0)[:n_stream, :source_timesteps])
+                    next_states.append(f[f'{i}']['next_states'][()].transpose(1, 0, 2)[:n_stream, :source_timesteps, :config['dim_obs']])
+        else:
+            # Darkroom environment
+            n_total_envs = config['grid_size'] ** 2
+            total_env_idx = list(range(n_total_envs))
+            random.seed(config['env_split_seed'])
+            random.shuffle(total_env_idx)
+            
+            n_train_envs = round(n_total_envs * config['train_env_ratio'])
+            
+            if mode == 'train':
+                env_idx = total_env_idx[:n_train_envs]
+            elif mode == 'test':
+                env_idx = total_env_idx[n_train_envs:]
+            elif mode == 'all':
+                env_idx = total_env_idx
+            else:
+                raise ValueError('Invalid mode')
+
+            with h5py.File(f'{traj_dir}/{get_traj_file_name(config)}.hdf5', 'r') as f:
+                for i in env_idx:
+                    states.append(f[f'{i}']['states'][()].transpose(1, 0, 2)[:n_stream, :source_timesteps])
+                    actions.append(f[f'{i}']['actions'][()].transpose(1, 0)[:n_stream, :source_timesteps])
+                    rewards.append(f[f'{i}']['rewards'][()].transpose(1, 0)[:n_stream, :source_timesteps])
+                    next_states.append(f[f'{i}']['next_states'][()].transpose(1, 0, 2)[:n_stream, :source_timesteps])
                     
         self.states = np.concatenate(states, axis=0)
         self.actions = np.concatenate(actions, axis=0)
@@ -87,7 +100,7 @@ class ADCompressedDataset(Dataset):
     Key feature: Maintains cross-episode history by sampling from trajectories within
     the same environment (history_idx), ensuring the model learns from in-context learning.
     """
-    def __init__(self, config, traj_dir, mode='train', n_stream=None, source_timesteps=None):
+    def __init__(self, config, traj_dir, mode='train', n_seed=50, n_stream=None, source_timesteps=None):
         self.config = config
         self.env = config['env']
         self.n_transit = config['n_transit']
@@ -101,37 +114,51 @@ class ADCompressedDataset(Dataset):
         self.min_uncompressed_length = config.get('min_uncompressed_length', 5)
         self.max_uncompressed_length = config.get('max_uncompressed_length', 30)
         
-        if self.env == 'darkroom':
-            n_total_envs = config['grid_size'] ** 2
-        else:
-            raise ValueError('Invalid env')
-        
-        total_env_idx = list(range(n_total_envs))
-        random.seed(config['env_split_seed'])
-        random.shuffle(total_env_idx)
-        
-        n_train_envs = round(n_total_envs * config['train_env_ratio'])
-        
-        if mode == 'train':
-            env_idx = total_env_idx[:n_train_envs]
-        elif mode == 'test':
-            env_idx = total_env_idx[n_train_envs:]
-        elif mode == 'all':
-            env_idx = total_env_idx
-        else:
-            raise ValueError('Invalid mode')
-        
         states = []
         actions = []
         rewards = []
         next_states = []
         
-        with h5py.File(f'{traj_dir}/{get_traj_file_name(config)}.hdf5', 'r') as f:
-            for i in env_idx:
-                states.append(f[f'{i}']['states'][()].transpose(1, 0, 2)[:n_stream, :source_timesteps])
-                actions.append(f[f'{i}']['actions'][()].transpose(1, 0)[:n_stream, :source_timesteps])
-                rewards.append(f[f'{i}']['rewards'][()].transpose(1, 0)[:n_stream, :source_timesteps])
-                next_states.append(f[f'{i}']['next_states'][()].transpose(1, 0, 2)[:n_stream, :source_timesteps])
+        if self.env == 'metaworld':
+            # Metaworld uses task-based directory structure
+            if mode == 'train':
+                file_path = f'{traj_dir}/{config["task"]}/{get_traj_file_name(config)}.hdf5'
+            elif mode == 'test':
+                file_path = f'{traj_dir}/{config["task"]}/test/{get_traj_file_name(config)}.hdf5'
+            else:
+                raise ValueError('Invalid mode')
+            
+            with h5py.File(file_path, 'r') as f:
+                for i in range(n_seed):
+                    # Extract only observation dimensions (first dim_obs elements)
+                    states.append(f[f'{i}']['states'][()].transpose(1, 0, 2)[:n_stream, :source_timesteps, :config['dim_obs']])
+                    actions.append(f[f'{i}']['actions'][()].transpose(1, 0, 2)[:n_stream, :source_timesteps])
+                    rewards.append(f[f'{i}']['rewards'][()].transpose(1, 0)[:n_stream, :source_timesteps])
+                    next_states.append(f[f'{i}']['next_states'][()].transpose(1, 0, 2)[:n_stream, :source_timesteps, :config['dim_obs']])
+        else:
+            # Darkroom environment
+            n_total_envs = config['grid_size'] ** 2
+            total_env_idx = list(range(n_total_envs))
+            random.seed(config['env_split_seed'])
+            random.shuffle(total_env_idx)
+            
+            n_train_envs = round(n_total_envs * config['train_env_ratio'])
+            
+            if mode == 'train':
+                env_idx = total_env_idx[:n_train_envs]
+            elif mode == 'test':
+                env_idx = total_env_idx[n_train_envs:]
+            elif mode == 'all':
+                env_idx = total_env_idx
+            else:
+                raise ValueError('Invalid mode')
+            
+            with h5py.File(f'{traj_dir}/{get_traj_file_name(config)}.hdf5', 'r') as f:
+                for i in env_idx:
+                    states.append(f[f'{i}']['states'][()].transpose(1, 0, 2)[:n_stream, :source_timesteps])
+                    actions.append(f[f'{i}']['actions'][()].transpose(1, 0)[:n_stream, :source_timesteps])
+                    rewards.append(f[f'{i}']['rewards'][()].transpose(1, 0)[:n_stream, :source_timesteps])
+                    next_states.append(f[f'{i}']['next_states'][()].transpose(1, 0, 2)[:n_stream, :source_timesteps])
         
         self.states = np.concatenate(states, axis=0)
         self.actions = np.concatenate(actions, axis=0)

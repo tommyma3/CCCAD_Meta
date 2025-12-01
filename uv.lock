@@ -76,6 +76,7 @@ dependencies = [
     { name = "pyyaml" },
     { name = "stable-baselines3", extra = ["extra"] },
     { name = "tensorboard" },
+    { name = "time-limit" },
     { name = "transformers" },
 ]
 
@@ -89,6 +90,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "stable-baselines3", extras = ["extra"], specifier = ">=2.7.0" },
     { name = "tensorboard", specifier = ">=2.20.0" },
+    { name = "time-limit", specifier = ">=2017.6.15" },
     { name = "transformers", specifier = ">=4.57.3" },
 ]
 
@@ -1779,6 +1781,12 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/85/dabeaf902892922777492e1d253bb7e1264cadce3cea932f7ff599e53fea/tensorboard_data_server-0.7.2-py3-none-macosx_10_9_x86_64.whl", hash = "sha256:9fe5d24221b29625dbc7328b0436ca7fc1c23de4acf4d272f1180856e32f9f60", size = 4823598, upload-time = "2023-10-23T21:23:33.714Z" },
     { url = "https://files.pythonhosted.org/packages/73/c6/825dab04195756cf8ff2e12698f22513b3db2f64925bdd41671bfb33aaa5/tensorboard_data_server-0.7.2-py3-none-manylinux_2_31_x86_64.whl", hash = "sha256:ef687163c24185ae9754ed5650eb5bc4d84ff257aabdc33f0cc6f74d8ba54530", size = 6590363, upload-time = "2023-10-23T21:23:35.583Z" },
 ]
+
+[[package]]
+name = "time-limit"
+version = "2017.6.15"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a8/96/c547e5f38eec37c668bbf2eb32e0c117d04d72bcdf63c6774b71466f2292/time_limit-2017.6.15.tar.gz", hash = "sha256:76e9dd1fe37634bb08036c1e4404ee63e618b323d0db2f442ea28e71fb6b0694", size = 1656, upload-time = "2017-06-15T19:56:31.25Z" }
 
 [[package]]
 name = "tokenizers"
